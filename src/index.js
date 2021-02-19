@@ -337,8 +337,6 @@ webApp.post('/whatsapp', async (req, res) => {
 
     let intentData = await DF.detectIntent(message, senderId);
 
-    console.log(JSON.stringify(intentData));
-
     if (intentData.intent === 'Default Welcome Intent') {
 
         let reply = intentData.fulfillmentMessages.text.text[0];
@@ -428,7 +426,7 @@ webApp.post('/whatsapp', async (req, res) => {
         let client = await APICALLS.createNewClient({
             uuid: senderId,
             platform: 'WhatsApp'
-        })
+        });
 
         let order = {
             items: JSON.stringify(items),
@@ -467,7 +465,7 @@ webApp.post('/whatsapp', async (req, res) => {
         let client = await APICALLS.createNewClient({
             uuid: senderId,
             platform: 'WhatsApp'
-        })
+        });
 
         let order = {
             items: JSON.stringify(items),
@@ -536,7 +534,28 @@ webApp.post('/whatsapp', async (req, res) => {
         let reply = intentData.fulfillmentMessages.text.text[0];
         await WA.sendMessage(reply, senderId);
 
-    } else {
+    } else if (intentData.intent === 'User Provides Address') {
+        let outputContexts = intentData.outputContexts;
+
+        let address;
+
+        outputContexts.forEach(outputContext => {
+            let session = outputContext.name;
+            if (session.includes('/contexts/session-vars')) {
+                address = outputContext.parameters.fields.address.stringValue;
+            }
+        });
+
+        await APICALLS.createNewClient({
+            uuid: senderId,
+            platform: 'WhatsApp',
+            address: address
+        });
+
+        let reply = intentData.fulfillmentMessages.text.text[0];
+        await WA.sendMessage(reply, senderId);
+    } 
+    else {
         let reply = intentData.fulfillmentMessages.text.text[0];
         await WA.sendMessage(reply, senderId);
     }
@@ -774,6 +793,27 @@ webApp.post('/facebook', async (req, res) => {
 
                 await APICALLS.updateOrderRatings(values);
 
+                let reply = intentData.fulfillmentMessages.text.text[0];
+                await FM.sendMessage(reply, senderId);
+
+            } else if (intentData.intent === 'User Provides Address') {
+                let outputContexts = intentData.outputContexts;
+        
+                let address;
+        
+                outputContexts.forEach(outputContext => {
+                    let session = outputContext.name;
+                    if (session.includes('/contexts/session-vars')) {
+                        address = outputContext.parameters.fields.address.stringValue;
+                    }
+                });
+        
+                await APICALLS.createNewClient({
+                    uuid: senderId,
+                    platform: 'WhatsApp',
+                    address: address
+                });
+        
                 let reply = intentData.fulfillmentMessages.text.text[0];
                 await FM.sendMessage(reply, senderId);
 
