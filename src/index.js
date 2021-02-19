@@ -623,8 +623,11 @@ webApp.post('/facebook', async (req, res) => {
                     const mi = menuItems[index];
                     let message = `${index + 1}. ${mi.name} at Rs ${mi.price}`;
                     let imageURL = `${IMAGEURL}${mi.image}`;
+                    console.log(message);
+                    console.log(imageURL);
+                    console.log(senderId);
                     await FM.sendMessage(message, senderId);
-                    // await FM.sendMediaMessage(imageURL, senderId);
+                    await FM.sendMediaMessage(imageURL, senderId);
                 }
 
             } else if (intentData.intent === 'User Chooses Collect') {

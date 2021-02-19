@@ -100,19 +100,11 @@ const createNewClient = async (client) => {
     }
 };
 
-let client = {
-    uuid: 919558515995,
-    platform: 'WhatsApp',
-    address: 'This is the address.'
-}
-
-createNewClient(client)
-    .then((res) => {
-        console.log(res);
-    })
-    .catch((err) => {
-        console.log(err);
-    })
+// let client = {
+//     uuid: 919558515995,
+//     platform: 'WhatsApp',
+//     address: 'This is the address.'
+// }
 
 // Update client email
 const updateClientEmail = async (client) => {
