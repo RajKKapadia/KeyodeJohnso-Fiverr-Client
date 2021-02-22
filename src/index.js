@@ -26,7 +26,7 @@ const DF = require('../helper-functions/dialogflowFunctions');
 const FM = require('../helper-functions/fbSendMsg');
 
 const IMAGEURL = process.env.IMAGEURL;
-const TOKEN = process.env.TOKEN;
+const WEBHOOKTOKEN = process.env.WEBHOOKTOKEN;
 
 // Welcome Action
 const welcomeAction = async (req) => {
@@ -38,7 +38,13 @@ const welcomeAction = async (req) => {
     let session = req.body.session;
     let sessionVars = `${session}/contexts/session-vars`;
 
-    let restaurants = await APICALLS.getAllRestaurants();
+    let restaurants = [];
+
+    try {
+        restaurants = await APICALLS.getAllRestaurants();
+    } catch (error) {
+        console.log(`Error at getAllRestaurants FB. ${error}`);
+    }
 
     let outString = 'Hello, thank you for messaging us. Please select a restaurant: ';
 
@@ -128,9 +134,7 @@ const userProvidesMenuItem = (req) => {
     */
 
     let responseText;
-
     let session = req.body.session;
-
     let mId = req.body.queryResult.parameters.menuItem;
 
     // If the response is out of range
@@ -255,7 +259,7 @@ const showCart = (req) => {
 }
 
 // User selects to collect the order
-const orderCollect = async (req) => {
+const orderCollect = (req) => {
 
     /* TODO
     user select to collect the order
@@ -300,7 +304,6 @@ const orderPayOnDelivery = (req) => {
 webApp.post('/webhook', async (req, res) => {
 
     let action = req.body.queryResult.action;
-
     let responseText = {};
 
     if (action === 'welcomeAction') {
@@ -554,7 +557,7 @@ webApp.post('/whatsapp', async (req, res) => {
 
         let reply = intentData.fulfillmentMessages.text.text[0];
         await WA.sendMessage(reply, senderId);
-    } 
+    }
     else {
         let reply = intentData.fulfillmentMessages.text.text[0];
         await WA.sendMessage(reply, senderId);
@@ -569,7 +572,7 @@ webApp.get('/facebook', (req, res) => {
     let challenge = req['query']['hub.challenge'];
 
     if (mode && token) {
-        if (mode === 'subscribe' && token === TOKEN) {
+        if (mode === 'subscribe' && token === WEBHOOKTOKEN) {
             console.log('Webhook verified by Facebook.')
             res.status(200).send(challenge);
         } else {
@@ -592,12 +595,21 @@ webApp.post('/facebook', async (req, res) => {
         console.log(`Message --> ${message}`);
 
         if (message === undefined) {
-            console.log(`Something bad came to Facebook`);
-            await FM.sendMessage(`Sorry, I can not understand this at moment.`, senderId);
+            try {
+                await FM.sendMessage(`Sorry, I can not understand this at moment.`, senderId);
+            } catch (error) {
+                console.log(`Error at message undefined from FB. ${error}`);
+            }
             res.status(200).send('EVENT_RECEIVED');
         } else {
 
-            let intentData = await DF.detectIntent(message, senderId);
+            let intentData = {};
+
+            try {
+                intentData = await DF.detectIntent(message, senderId);
+            } catch (error) {
+                console.log(`Error at detectIntent FB. ${error}`);
+            }
 
             if (intentData.intent === 'Default Welcome Intent') {
 
@@ -608,32 +620,41 @@ webApp.post('/facebook', async (req, res) => {
                     platform: 'Facebook'
                 }
 
-                await APICALLS.createNewClient(client);
-
-                await FM.sendMessage(reply, senderId);
+                try {
+                    await APICALLS.createNewClient(client);
+                    await FM.sendMessage(reply, senderId);
+                } catch (error) {
+                    console.log(`Error at Default Welcome Intent FB. ${error}`);
+                }
 
             } else if (intentData.intent === 'User Provides Restaurant') {
 
                 let data = JSON.parse(intentData.fulfillmentMessages.text.text[0]);
                 let menuItems = data.menuItems;
 
-                await FM.sendMessage('These are the menu items, send the number you want to order.', senderId);
+                try {
+                    await FM.sendMessage('These are the menu items, send the number you want to order.', senderId);
+                } catch (error) {
+                    console.log(`Error at User Provides Restaurants First Message FB. ${error}`);
+                }
 
                 for (let index = 0; index < menuItems.length; index++) {
                     const mi = menuItems[index];
                     let message = `${index + 1}. ${mi.name} at Rs ${mi.price}`;
-                    let imageURL = `${IMAGEURL}${mi.image}`;
-                    console.log(message);
-                    console.log(imageURL);
-                    console.log(senderId);
-                    await FM.sendMessage(message, senderId);
-                    await FM.sendMediaMessage(imageURL, senderId);
+                    // let imageURL = `${IMAGEURL}${mi.image}`;
+                    try {
+                        await FM.sendMessage(message, senderId);
+                        //await FM.sendMediaMessage(imageURL, senderId);
+                    } catch (error) {
+                        console.log(`Error at User Provides Restaurants Second Message FB. ${error}`)
+                    }
                 }
 
-            } else if (intentData.intent === 'User Chooses Collect') {
+            } else if (intentData.intent === 'User Chooses Pay Now'
+                || intentData.intent === 'User Chooses Collect'
+                || intentData.intent === 'User Chooses Pay On Delivery') {
 
                 let outputContexts = intentData.outputContexts;
-
                 let cartItems;
 
                 outputContexts.forEach(outputContext => {
@@ -650,107 +671,51 @@ webApp.post('/facebook', async (req, res) => {
                     items[val.mid.numberValue] = val.quantity.numberValue
                 });
 
-                let client = await APICALLS.createNewClient({
-                    uuid: senderId,
-                    platform: 'Facebook'
-                })
+                let client = {};
+
+                try {
+                    client = await APICALLS.createNewClient({
+                        uuid: senderId,
+                        platform: 'Facebook'
+                    });
+                } catch (error) {
+                    console.log(`Error at Payment at createNewClient FB. ${error}`);
+                }
+
+                let typeOfOrder, paymentMode;
+
+                if (intentData.intent === 'User Chooses Collect') {
+                    typeOfOrder = 'Collect';
+                } else {
+                    typeOfOrder = 'Delivery';
+                }
+
+                if (intentData.intent === 'User Chooses Pay Now'
+                    && intentData.intent !== 'User Chooses Collect') {
+                    paymentMode = 'Pay Now';
+                } else {
+                    paymentMode = 'Pay On Delivery';
+                }
 
                 let order = {
                     items: JSON.stringify(items),
                     client_id: client.id,
-                    type_of_order: 'Collect',
-                    payment_mode: 'Pay On Collect',
-                }
-
-                await APICALLS.createNewOrder(order);
+                    type_of_order: typeOfOrder,
+                    payment_mode: paymentMode,
+                };
 
                 let reply = intentData.fulfillmentMessages.text.text[0];
-                await FM.sendMessage(reply, senderId);
-
-                await DF.deleteContext(senderId, 'session-vars');
-
-            } else if (intentData.intent === 'User Chooses Pay Now') {
-
-                let outputContexts = intentData.outputContexts;
-
-                let cartItems;
-
-                outputContexts.forEach(outputContext => {
-                    let session = outputContext.name;
-                    if (session.includes('/contexts/session-vars')) {
-                        cartItems = outputContext.parameters.fields.cartItems;
-                    }
-                });
-
-                let items = {};
-
-                cartItems.listValue.values.forEach(ci => {
-                    let val = ci.structValue.fields;
-                    items[val.mid.numberValue] = val.quantity.numberValue
-                });
-
-                let client = await APICALLS.createNewClient({
-                    uuid: senderId,
-                    platform: 'Facebook'
-                })
-
-                let order = {
-                    items: JSON.stringify(items),
-                    client_id: client.id,
-                    type_of_order: 'Delivery',
-                    payment_mode: 'Pay Now',
+                try {
+                    await APICALLS.createNewOrder(order);
+                    await FM.sendMessage(reply, senderId);
+                    await DF.deleteContext(senderId, 'session-vars');
+                } catch (error) {
+                    console.log(`Error at Payment createNewOrder, sendMessage, deleteContext FB. ${error}`);
                 }
-
-                await APICALLS.createNewOrder(order);
-
-                let reply = intentData.fulfillmentMessages.text.text[0];
-                await FM.sendMessage(reply, senderId);
-
-                await DF.deleteContext(senderId, 'session-vars');
-
-            } else if (intentData.intent === 'User Chooses Pay On Delivery') {
-
-                let outputContexts = intentData.outputContexts;
-
-                let cartItems;
-
-                outputContexts.forEach(outputContext => {
-                    let session = outputContext.name;
-                    if (session.includes('/contexts/session-vars')) {
-                        cartItems = outputContext.parameters.fields.cartItems;
-                    }
-                });
-
-                let items = {};
-
-                cartItems.listValue.values.forEach(ci => {
-                    let val = ci.structValue.fields;
-                    items[val.mid.numberValue] = val.quantity.numberValue
-                });
-
-                let client = await APICALLS.createNewClient({
-                    uuid: senderId,
-                    platform: 'Facebook'
-                })
-
-                let order = {
-                    items: JSON.stringify(items),
-                    client_id: client.id,
-                    type_of_order: 'Delivery',
-                    payment_mode: 'Pay On Delivery',
-                }
-
-                await APICALLS.createNewOrder(order);
-
-                let reply = intentData.fulfillmentMessages.text.text[0];
-                await FM.sendMessage(reply, senderId);
-
-                await DF.deleteContext(senderId, 'session-vars');
 
             } else if (intentData.intent === 'User Provides Email') {
 
                 let outputContexts = intentData.outputContexts;
-
                 let email;
 
                 outputContexts.forEach(outputContext => {
@@ -760,20 +725,30 @@ webApp.post('/facebook', async (req, res) => {
                     }
                 });
 
-                let client = await APICALLS.createNewClient({
-                    uuid: senderId,
-                    platform: 'Facebook'
-                })
+                let client = {};
+
+                try {
+                    client = await APICALLS.createNewClient({
+                        uuid: senderId,
+                        platform: 'Facebook'
+                    });
+                } catch (error) {
+                    console.log(`Error at createNewClient User Provides Email FB. ${error}`);
+                }
 
                 let updateEmail = {
                     id: client.id,
                     email: email
                 }
 
-                await APICALLS.updateClientEmail(updateEmail);
-
                 let reply = intentData.fulfillmentMessages.text.text[0];
-                await FM.sendMessage(reply, senderId);
+                try {
+                    await APICALLS.updateClientEmail(updateEmail);
+                    await FM.sendMessage(reply, senderId);
+                } catch (error) {
+                    console.log(`Error at updateClient FB. ${error}`);
+                }
+
             } else if (intentData.intent === 'User Provides Ratings') {
 
                 let outputContexts = intentData.outputContexts;
@@ -794,35 +769,45 @@ webApp.post('/facebook', async (req, res) => {
                     rating: ratings
                 }
 
-                await APICALLS.updateOrderRatings(values);
-
                 let reply = intentData.fulfillmentMessages.text.text[0];
-                await FM.sendMessage(reply, senderId);
+                try {
+                    await APICALLS.updateOrderRatings(values);
+                    await FM.sendMessage(reply, senderId);
+                } catch (error) {
+                    console.log(`Error at updateOrderRatings FB. ${error}`);
+                }
 
             } else if (intentData.intent === 'User Provides Address') {
+
                 let outputContexts = intentData.outputContexts;
-        
                 let address;
-        
+
                 outputContexts.forEach(outputContext => {
                     let session = outputContext.name;
                     if (session.includes('/contexts/session-vars')) {
                         address = outputContext.parameters.fields.address.stringValue;
                     }
                 });
-        
-                await APICALLS.createNewClient({
-                    uuid: senderId,
-                    platform: 'WhatsApp',
-                    address: address
-                });
-        
+
                 let reply = intentData.fulfillmentMessages.text.text[0];
-                await FM.sendMessage(reply, senderId);
+                try {
+                    await APICALLS.createNewClient({
+                        uuid: senderId,
+                        platform: 'WhatsApp',
+                        address: address
+                    });
+                    await FM.sendMessage(reply, senderId);
+                } catch (error) {
+                    console.log(`Error at User PRovides Address FB. ${error}`)
+                }
 
             } else {
                 let reply = intentData.fulfillmentMessages.text.text[0];
-                await FM.sendMessage(reply, senderId);
+                try {
+                    await FM.sendMessage(reply, senderId);
+                } catch (error) {
+                    console.log(`Error at no intent match FB. ${error}`);
+                }
             }
             res.status(200).send('EVENT_RECEIVED');
         }
@@ -833,16 +818,21 @@ webApp.post('/facebook', async (req, res) => {
 
 // Order confirm
 webApp.post('/confirm', async (req, res) => {
+    
     let data = req.body;
     let orderId = data.order_id;
-    let client = data.client;
+    let client = data.user_id;
 
     let message = `Heyya, Your order ${orderId} is confirmed by the restaurant. It will be delivered in 45 mins.`
 
-    if (client.platform === 'Facebook') {
-        await FM.sendMessage(message, client.uuid);
-    } else {
-        await WA.sendMessage(message, client.uuid);
+    try {
+        if (client.platform === 'Facebook') {
+            await FM.sendMessage(message, client.uuid);
+        } else {
+            await WA.sendMessage(message, client.uuid);
+        }
+    } catch (error) {
+        console.log(`Error at confirm order. ${error}`);
     }
 
     res.sendStatus(200);
@@ -852,14 +842,19 @@ webApp.post('/confirm', async (req, res) => {
 webApp.post('/cancel', async (req, res) => {
 
     let data = req.body;
-    let client = data.client;
+    let orderId = data.order_id;
+    let client = data.user_id;
 
     let message = `Your order is cancelled by the restaurant. Sorry for the inconvenience caused.`
 
-    if (client.platform === 'Facebook') {
-        await FM.sendMessage(message, client.uuid);
-    } else {
-        await WA.sendMessage(message, client.uuid);
+    try {
+        if (client.platform === 'Facebook') {
+            await FM.sendMessage(message, client.uuid);
+        } else {
+            await WA.sendMessage(message, client.uuid);
+        }
+    } catch (error) {
+        console.log(`Error at cancel order. ${error}`);
     }
 
     res.sendStatus(200);
@@ -869,7 +864,8 @@ webApp.post('/cancel', async (req, res) => {
 webApp.post('/delivered', async (req, res) => {
 
     let data = req.body;
-    let client = data.client;
+    let orderId = data.order_id;
+    let client = data.user_id;
 
     let parameters = {
         fields: {
@@ -884,17 +880,31 @@ webApp.post('/delivered', async (req, res) => {
         }
     }
 
-    await DF.setContext(client.uuid, 'ratings-vars', parameters, 5);
-    await DF.setContext(client.uuid, 'await-ratings', {}, 2);
+    try {
+        await DF.setContext(client.uuid, 'ratings-vars', parameters, 5);
+        await DF.setContext(client.uuid, 'await-ratings', {}, 2);
+    } catch (error) {
+        console.log(`Error at delivered order, setContext. ${error}`);
+    }
 
-    let intentData = await DF.detectIntent('done', client.uuid);
+    let intentData = {};
+
+    try {
+        intentData = await DF.detectIntent('done', client.uuid);
+    } catch (error) {
+        console.log(`Error at delivered detectIntent. ${error}`);
+    }
 
     let reply = intentData.fulfillmentMessages.text.text[0];
 
-    if (client.platform === 'Facebook') {
-        await FM.sendMessage(reply, client.uuid);
-    } else {
-        await WA.sendMessage(reply, client.uuid);
+    try {
+        if (client.platform === 'Facebook') {
+            await FM.sendMessage(reply, client.uuid);
+        } else {
+            await WA.sendMessage(reply, client.uuid);
+        }
+    } catch (error) {
+        console.log(`Error at delivered sendMessage. ${error}`);
     }
 
     res.sendStatus(200);
