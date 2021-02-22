@@ -821,7 +821,7 @@ webApp.post('/confirm', async (req, res) => {
     
     let data = req.body;
     let orderId = data.order_id;
-    let client = data.user_id;
+    let client = JSON.parse(data.user_id);
 
     let message = `Heyya, Your order ${orderId} is confirmed by the restaurant. It will be delivered in 45 mins.`
 
@@ -843,7 +843,9 @@ webApp.post('/cancel', async (req, res) => {
 
     let data = req.body;
     let orderId = data.order_id;
-    let client = data.user_id;
+    let client = JSON.parse(data.user_id);
+
+    console.log(data);
 
     let message = `Your order is cancelled by the restaurant. Sorry for the inconvenience caused.`
 
@@ -865,7 +867,7 @@ webApp.post('/delivered', async (req, res) => {
 
     let data = req.body;
     let orderId = data.order_id;
-    let client = data.user_id;
+    let client = JSON.parse(data.user_id);
 
     let parameters = {
         fields: {
