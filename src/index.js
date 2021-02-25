@@ -338,7 +338,13 @@ webApp.post('/whatsapp', async (req, res) => {
     console.log(`Sender id --> ${senderId}`);
     console.log(`Message --> ${message}`);
 
-    let intentData = await DF.detectIntent(message, senderId);
+    let intentData = {};
+
+    try {
+        intentData = await DF.detectIntent(message, senderId);
+    } catch (error) {
+        console.log(`Error at detectIntent WA. ${error}`);
+    }
 
     if (intentData.intent === 'Default Welcome Intent') {
 
@@ -349,28 +355,41 @@ webApp.post('/whatsapp', async (req, res) => {
             platform: 'WhatsApp'
         }
 
-        await APICALLS.createNewClient(client);
-
-        await WA.sendMessage(reply, senderId);
+        try {
+            await APICALLS.createNewClient(client);
+            await WA.sendMessage(reply, senderId);
+        } catch (error) {
+            console.log(`Error at Default Welcome Intent WA. ${error}`);
+        }
 
     } else if (intentData.intent === 'User Provides Restaurant') {
 
         let data = JSON.parse(intentData.fulfillmentMessages.text.text[0]);
         let menuItems = data.menuItems;
 
-        await WA.sendMessage('These are the menu items, send the number you want to order.', senderId);
+        try {
+            await WA.sendMessage('These are the menu items, send the number you want to order.', senderId);
+        } catch (error) {
+            console.log(`Error at User Provides Restaurants First Message WA. ${error}`);
+        }
 
         for (let index = 0; index < menuItems.length; index++) {
             const mi = menuItems[index];
             let message = `${index + 1}. ${mi.name} at Rs ${mi.price}`;
-            let imageURL = `${IMAGEURL}${mi.image}`;
-            await WA.sendMessage(message, senderId);
+            // let imageURL = `${IMAGEURL}${mi.image}`;
+            try {
+                await WA.sendMessage(message, senderId);
+                //await WA.sendMediaMessage(imageURL, senderId);
+            } catch (error) {
+                console.log(`Error at User Provides Restaurants Second Message WA. ${error}`)
+            }
         }
 
-    } else if (intentData.intent === 'User Chooses Collect') {
+    } else if (intentData.intent === 'User Chooses Pay Now'
+        || intentData.intent === 'User Chooses Collect'
+        || intentData.intent === 'User Chooses Pay On Delivery') {
 
         let outputContexts = intentData.outputContexts;
-
         let cartItems;
 
         outputContexts.forEach(outputContext => {
@@ -387,107 +406,51 @@ webApp.post('/whatsapp', async (req, res) => {
             items[val.mid.numberValue] = val.quantity.numberValue
         });
 
-        let client = await APICALLS.createNewClient({
-            uuid: senderId,
-            platform: 'WhatsApp'
-        })
+        let client = {};
+
+        try {
+            client = await APICALLS.createNewClient({
+                uuid: senderId,
+                platform: 'WhatsApp'
+            });
+        } catch (error) {
+            console.log(`Error at Payment at createNewClient WA. ${error}`);
+        }
+
+        let typeOfOrder, paymentMode;
+
+        if (intentData.intent === 'User Chooses Collect') {
+            typeOfOrder = 'Collect';
+        } else {
+            typeOfOrder = 'Delivery';
+        }
+
+        if (intentData.intent === 'User Chooses Pay Now'
+            && intentData.intent !== 'User Chooses Collect') {
+            paymentMode = 'Pay Now';
+        } else {
+            paymentMode = 'Pay On Delivery';
+        }
 
         let order = {
             items: JSON.stringify(items),
             client_id: client.id,
-            type_of_order: 'Collect',
-            payment_mode: 'Pay On Collect',
-        }
-
-        await APICALLS.createNewOrder(order);
+            type_of_order: typeOfOrder,
+            payment_mode: paymentMode,
+        };
 
         let reply = intentData.fulfillmentMessages.text.text[0];
-        await WA.sendMessage(reply, senderId);
-
-        await DF.deleteContext(senderId, 'session-vars');
-
-    } else if (intentData.intent === 'User Chooses Pay Now') {
-
-        let outputContexts = intentData.outputContexts;
-
-        let cartItems;
-
-        outputContexts.forEach(outputContext => {
-            let session = outputContext.name;
-            if (session.includes('/contexts/session-vars')) {
-                cartItems = outputContext.parameters.fields.cartItems;
-            }
-        });
-
-        let items = {};
-
-        cartItems.listValue.values.forEach(ci => {
-            let val = ci.structValue.fields;
-            items[val.mid.numberValue] = val.quantity.numberValue
-        });
-
-        let client = await APICALLS.createNewClient({
-            uuid: senderId,
-            platform: 'WhatsApp'
-        });
-
-        let order = {
-            items: JSON.stringify(items),
-            client_id: client.id,
-            type_of_order: 'Delivery',
-            payment_mode: 'Pay Now',
+        try {
+            await APICALLS.createNewOrder(order);
+            await WA.sendMessage(reply, senderId);
+            await DF.deleteContext(senderId, 'session-vars');
+        } catch (error) {
+            console.log(`Error at Payment createNewOrder, sendMessage, deleteContext WA. ${error}`);
         }
-
-        await APICALLS.createNewOrder(order);
-
-        let reply = intentData.fulfillmentMessages.text.text[0];
-        await WA.sendMessage(reply, senderId);
-
-        await DF.deleteContext(senderId, 'session-vars');
-
-    } else if (intentData.intent === 'User Chooses Pay On Delivery') {
-
-        let outputContexts = intentData.outputContexts;
-
-        let cartItems;
-
-        outputContexts.forEach(outputContext => {
-            let session = outputContext.name;
-            if (session.includes('/contexts/session-vars')) {
-                cartItems = outputContext.parameters.fields.cartItems;
-            }
-        });
-
-        let items = {};
-
-        cartItems.listValue.values.forEach(ci => {
-            let val = ci.structValue.fields;
-            items[val.mid.numberValue] = val.quantity.numberValue
-        });
-
-        let client = await APICALLS.createNewClient({
-            uuid: senderId,
-            platform: 'WhatsApp'
-        });
-
-        let order = {
-            items: JSON.stringify(items),
-            client_id: client.id,
-            type_of_order: 'Delivery',
-            payment_mode: 'Pay On Delivery',
-        }
-
-        await APICALLS.createNewOrder(order);
-
-        let reply = intentData.fulfillmentMessages.text.text[0];
-        await WA.sendMessage(reply, senderId);
-
-        await DF.deleteContext(senderId, 'session-vars');
 
     } else if (intentData.intent === 'User Provides Email') {
 
         let outputContexts = intentData.outputContexts;
-
         let email;
 
         outputContexts.forEach(outputContext => {
@@ -497,20 +460,29 @@ webApp.post('/whatsapp', async (req, res) => {
             }
         });
 
-        let client = await APICALLS.createNewClient({
-            uuid: senderId,
-            platform: 'WhatsApp'
-        })
+        let client = {};
+
+        try {
+            client = await APICALLS.createNewClient({
+                uuid: senderId,
+                platform: 'WhatsApp'
+            });
+        } catch (error) {
+            console.log(`Error at createNewClient User Provides Email WA. ${error}`);
+        }
 
         let updateEmail = {
             id: client.id,
             email: email
         }
 
-        await APICALLS.updateClientEmail(updateEmail);
-
         let reply = intentData.fulfillmentMessages.text.text[0];
-        await WA.sendMessage(reply, senderId);
+        try {
+            await APICALLS.updateClientEmail(updateEmail);
+            await WA.sendMessage(reply, senderId);
+        } catch (error) {
+            console.log(`Error at updateClient WA. ${error}`);
+        }
 
     } else if (intentData.intent === 'User Provides Ratings') {
 
@@ -532,14 +504,17 @@ webApp.post('/whatsapp', async (req, res) => {
             rating: ratings
         }
 
-        await APICALLS.updateOrderRatings(values);
-
         let reply = intentData.fulfillmentMessages.text.text[0];
-        await WA.sendMessage(reply, senderId);
+        try {
+            await APICALLS.updateOrderRatings(values);
+            await FM.sendMessage(reply, senderId);
+        } catch (error) {
+            console.log(`Error at updateOrderRatings WA. ${error}`);
+        }
 
     } else if (intentData.intent === 'User Provides Address') {
-        let outputContexts = intentData.outputContexts;
 
+        let outputContexts = intentData.outputContexts;
         let address;
 
         outputContexts.forEach(outputContext => {
@@ -549,18 +524,25 @@ webApp.post('/whatsapp', async (req, res) => {
             }
         });
 
-        await APICALLS.createNewClient({
-            uuid: senderId,
-            platform: 'WhatsApp',
-            address: address
-        });
-
         let reply = intentData.fulfillmentMessages.text.text[0];
-        await WA.sendMessage(reply, senderId);
+        try {
+            await APICALLS.createNewClient({
+                uuid: senderId,
+                platform: 'WhatsApp',
+                address: address
+            });
+            await WA.sendMessage(reply, senderId);
+        } catch (error) {
+            console.log(`Error at User PRovides Address WA. ${error}`)
+        }
     }
     else {
         let reply = intentData.fulfillmentMessages.text.text[0];
-        await WA.sendMessage(reply, senderId);
+        try {
+            await WA.sendMessage(reply, senderId);
+        } catch (error) {
+            console.log(`Error at no intent match WA. ${error}`);
+        }
     }
 });
 
@@ -793,7 +775,7 @@ webApp.post('/facebook', async (req, res) => {
                 try {
                     await APICALLS.createNewClient({
                         uuid: senderId,
-                        platform: 'WhatsApp',
+                        platform: 'Facebook',
                         address: address
                     });
                     await FM.sendMessage(reply, senderId);
@@ -818,7 +800,7 @@ webApp.post('/facebook', async (req, res) => {
 
 // Order confirm
 webApp.post('/confirm', async (req, res) => {
-    
+
     let data = req.body;
     let orderId = data.order_id;
     let client = JSON.parse(data.user_id);
