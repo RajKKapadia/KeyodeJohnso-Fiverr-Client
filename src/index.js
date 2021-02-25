@@ -623,10 +623,10 @@ webApp.post('/facebook', async (req, res) => {
                 for (let index = 0; index < menuItems.length; index++) {
                     const mi = menuItems[index];
                     let message = `${index + 1}. ${mi.name} at Rs ${mi.price}`;
-                    // let imageURL = `${IMAGEURL}${mi.image}`;
+                    let imageURL = `${IMAGEURL}${mi.image}`;
                     try {
                         await FM.sendMessage(message, senderId);
-                        //await FM.sendMediaMessage(imageURL, senderId);
+                        await FM.sendMediaMessage(imageURL, senderId);
                     } catch (error) {
                         console.log(`Error at User Provides Restaurants Second Message FB. ${error}`)
                     }
