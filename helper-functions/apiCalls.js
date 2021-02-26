@@ -96,15 +96,15 @@ const createNewClient = async (client) => {
         let response = await axios.post(url, client, headers);
         return response.data.data;
     } catch (error) {
-        console.log(`Error at  getAllRestaurants --> ${error}`);
+        console.log(`Error at  createNewClient --> ${error}`);
     }
 };
 
 // let client = {
-//     uuid: 919558515995,
-//     platform: 'WhatsApp',
-//     address: 'This is the address.'
-// }
+//     uuid: 123456789,
+//     platform: 'Telegram',
+//     name: 'Ramesh Malhotra'
+// };
 
 // Update client email
 const updateClientEmail = async (client) => {
@@ -119,14 +119,31 @@ const updateClientEmail = async (client) => {
         console.log('Client email updated');
         console.log(response.data);
     } catch (error) {
-        console.log(`Error at  getAllRestaurants --> ${error}`);
+        console.log(`Error at  updateClientEmail --> ${error}`);
     }
 };
 
-// let updateEmail = {
-//     id: 4,
-//     email: 'raj@gmail.com'
-// }
+// Update client email
+const updateClientName = async (client) => {
+
+    url = `${URL}/update/name`;
+    headers = {
+        Accept: 'application/json'
+    }
+
+    try {
+        let response = await axios.post(url, client, headers);
+        console.log('Client name updated');
+        console.log(response.data);
+    } catch (error) {
+        console.log(`Error at  updateClientName --> ${error}`);
+    }
+};
+
+// let updateName = {
+//     id: 582346178,
+//     address: 'Raj Kapadia address'
+// };
 
 // Update order ratings
 const updateOrderRatings = async (ratings) => {
@@ -141,7 +158,7 @@ const updateOrderRatings = async (ratings) => {
         console.log('Order rating updated.');
         console.log(response.data);
     } catch (error) {
-        console.log(`Error at  getAllRestaurants --> ${error}`);
+        console.log(`Error at  updateOrderRatings --> ${error}`);
     }
 };
 
@@ -156,5 +173,6 @@ module.exports = {
     createNewOrder,
     createNewClient,
     updateClientEmail,
-    updateOrderRatings
+    updateOrderRatings,
+    updateClientName
 };

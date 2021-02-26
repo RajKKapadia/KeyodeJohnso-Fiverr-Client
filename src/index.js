@@ -304,6 +304,7 @@ const orderPayOnDelivery = (req) => {
 webApp.post('/webhook', async (req, res) => {
 
     let action = req.body.queryResult.action;
+    console.log(`Action calles --> ${action}`);
     let responseText = {};
 
     if (action === 'welcomeAction') {
@@ -524,19 +525,55 @@ webApp.post('/whatsapp', async (req, res) => {
             }
         });
 
+        let client = {
+            uuid: senderId,
+            platform: 'WhatsApp',
+            address: address
+        };
+
         let reply = intentData.fulfillmentMessages.text.text[0];
         try {
-            await APICALLS.createNewClient({
-                uuid: senderId,
-                platform: 'WhatsApp',
-                address: address
-            });
+            await APICALLS.updateClientAddress(client);
             await WA.sendMessage(reply, senderId);
         } catch (error) {
             console.log(`Error at User PRovides Address WA. ${error}`)
         }
-    }
-    else {
+    } else if (intentData.intent === 'User Provides Name') {
+
+        let outputContexts = intentData.outputContexts;
+        let name;
+
+        outputContexts.forEach(outputContext => {
+            let session = outputContext.name;
+            if (session.includes('/contexts/session-vars')) {
+                name = outputContext.parameters.fields.person.structValuefields.name.stringValue;
+            }
+        });
+
+        let client = {};
+
+        try {
+            client = await APICALLS.createNewClient({
+                uuid: senderId,
+                platform: 'WhatsApp'
+            });
+        } catch (error) {
+            console.log(`Error at createNewClient User Provides Email WA. ${error}`);
+        }
+
+        let updateName = {
+            id: client.id,
+            name: name
+        };
+
+        try {
+            await APICALLS.updateClientName(updateName);
+            await WA.sendMessage(senderId, 'Please choose an option from: Deliver/Collect')
+        } catch (error) {
+            console.log(`Error at User Provides Name WA. ${error}`);
+        }
+
+    } else {
         let reply = intentData.fulfillmentMessages.text.text[0];
         try {
             await WA.sendMessage(reply, senderId);
@@ -771,16 +808,53 @@ webApp.post('/facebook', async (req, res) => {
                     }
                 });
 
+                let client = {
+                    uuid: senderId,
+                    platform: 'Facebook',
+                    address: address
+                };
+
                 let reply = intentData.fulfillmentMessages.text.text[0];
                 try {
-                    await APICALLS.createNewClient({
-                        uuid: senderId,
-                        platform: 'Facebook',
-                        address: address
-                    });
+                    await APICALLS.createNewClient(client);
                     await FM.sendMessage(reply, senderId);
                 } catch (error) {
                     console.log(`Error at User PRovides Address FB. ${error}`)
+                }
+
+            } else if (intentData.intent === 'User Provides Name') {
+
+                let outputContexts = intentData.outputContexts;
+                let name;
+
+                outputContexts.forEach(outputContext => {
+                    let session = outputContext.name;
+                    if (session.includes('/contexts/session-vars')) {
+                        name = outputContext.parameters.fields.person.structValuefields.name.stringValue;
+                    }
+                });
+
+                let client = {};
+
+                try {
+                    client = await APICALLS.createNewClient({
+                        uuid: senderId,
+                        platform: 'Facebook'
+                    });
+                } catch (error) {
+                    console.log(`Error at createNewClient User Provides Email Facebook. ${error}`);
+                }
+
+                let updateName = {
+                    id: client.id,
+                    name: name
+                };
+
+                try {
+                    await APICALLS.updateClientName(updateName);
+                    await FM.sendMessage(senderId, 'Please choose an option from: Deliver/Collect')
+                } catch (error) {
+                    console.log(`Error at User Provides Name FB. ${error}`);
                 }
 
             } else {
@@ -800,13 +874,11 @@ webApp.post('/facebook', async (req, res) => {
 
 // Telegram
 const TelegramBot = require('node-telegram-bot-api');
-
 const TELEGRAMTOKEN = process.env.TELEGRAMTOKEN;
-
-const bot = new TelegramBot(TELEGRAMTOKEN, {polling: true});
+const bot = new TelegramBot(TELEGRAMTOKEN, { polling: true });
 
 bot.on('message', async (msg) => {
-    
+
     let senderId = `${msg.from.id}`;
     let message = msg.text;
 
@@ -826,7 +898,7 @@ bot.on('message', async (msg) => {
             intentData = await DF.detectIntent(message, senderId);
         } catch (error) {
             console.log(`Error at detectIntent Telegram. ${error}`);
-        } 
+        }
     }
 
     if (intentData.intent === 'Default Welcome Intent') {
@@ -1007,19 +1079,59 @@ bot.on('message', async (msg) => {
             }
         });
 
+        let client = {
+            uuid: senderId,
+            platform: 'Telegram',
+            address: address
+        };
+
         let reply = intentData.fulfillmentMessages.text.text[0];
         try {
-            await APICALLS.createNewClient({
-                uuid: senderId,
-                platform: 'Telegram',
-                address: address
-            });
+            await APICALLS.createNewClient(client);
             bot.sendMessage(senderId, reply);
         } catch (error) {
             console.log(`Error at User PRovides Address Telegram. ${error}`)
         }
-    }
-    else {
+    } else if (intentData.intent === 'User Provides Name') {
+
+        let outputContexts = intentData.outputContexts;
+        let name;
+
+        outputContexts.forEach(outputContext => {
+            let session = outputContext.name;
+            if (session.includes('/contexts/session-vars')) {
+                name = outputContext.parameters.fields.person.structValue.fields.name.stringValue;
+            }
+        });
+
+        let client = {};
+
+        try {
+            client = await APICALLS.createNewClient({
+                uuid: senderId,
+                platform: 'Telegram'
+            });
+        } catch (error) {
+            console.log(`Error at createNewClient User Provides Email Telegram. ${error}`);
+        }
+
+        let updateName = {
+            id: client.id,
+            name: name
+        };
+
+        try {
+            await APICALLS.updateClientName(updateName);
+            bot.sendMessage(senderId, 'Please choose an option from below.', {
+                "reply_markup": {
+                    "keyboard": [['Collect', 'Deliver']]
+                }
+            });
+        } catch (error) {
+            console.log(`Error at User Provides Name Telegram. ${error}`);
+        }
+
+    } else {
         let reply = intentData.fulfillmentMessages.text.text[0];
         try {
             bot.sendMessage(senderId, reply);
@@ -1119,7 +1231,7 @@ webApp.post('/delivered', async (req, res) => {
     try {
         if (client.platform === 'Facebook') {
             await FM.sendMessage(reply, client.uuid);
-        } else if (client.platform === 'WhatsApp'){
+        } else if (client.platform === 'WhatsApp') {
             await WA.sendMessage(reply, client.uuid);
         } else {
             bot.sendMessage(client.uuid, reply);
