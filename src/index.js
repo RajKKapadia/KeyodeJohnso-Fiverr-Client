@@ -507,7 +507,7 @@ webApp.post('/whatsapp', async (req, res) => {
         let reply = intentData.fulfillmentMessages.text.text[0];
         try {
             await APICALLS.updateOrderRatings(values);
-            await FM.sendMessage(reply, senderId);
+            await WA.sendMessage(reply, senderId);
         } catch (error) {
             console.log(`Error at updateOrderRatings WA. ${error}`);
         }
@@ -798,6 +798,237 @@ webApp.post('/facebook', async (req, res) => {
     }
 });
 
+// Telegram
+const TelegramBot = require('node-telegram-bot-api');
+
+const TELEGRAMTOKEN = process.env.TELEGRAMTOKEN;
+
+const bot = new TelegramBot(TELEGRAMTOKEN, {polling: true});
+
+bot.on('message', async (msg) => {
+    
+    let senderId = `${msg.from.id}`;
+    let message = msg.text;
+
+    console.log(`Sender id --> ${senderId}`);
+    console.log(`Message --> ${message}`);
+
+    let intentData = {};
+
+    if (message === '/start') {
+        try {
+            intentData = await DF.detectIntent('hello', senderId);
+        } catch (error) {
+            console.log(`Error at detectIntent Telegram. ${error}`);
+        }
+    } else {
+        try {
+            intentData = await DF.detectIntent(message, senderId);
+        } catch (error) {
+            console.log(`Error at detectIntent Telegram. ${error}`);
+        } 
+    }
+
+    if (intentData.intent === 'Default Welcome Intent') {
+
+        let reply = intentData.fulfillmentMessages.text.text[0];
+
+        let client = {
+            uuid: senderId,
+            platform: 'Telegram'
+        }
+
+        try {
+            await APICALLS.createNewClient(client);
+            bot.sendMessage(senderId, reply);
+        } catch (error) {
+            console.log(`Error at Default Welcome Intent Telegram. ${error}`);
+        }
+
+    } else if (intentData.intent === 'User Provides Restaurant') {
+
+        let data = JSON.parse(intentData.fulfillmentMessages.text.text[0]);
+        let menuItems = data.menuItems;
+
+        try {
+            bot.sendMessage(senderId, 'These are the menu items, send the number you want to order.');
+        } catch (error) {
+            console.log(`Error at User Provides Restaurants First Message Telegram. ${error}`);
+        }
+
+        for (let index = 0; index < menuItems.length; index++) {
+            const mi = menuItems[index];
+            let message = `${index + 1}. ${mi.name} at Rs ${mi.price}`;
+            let imageURL = `${IMAGEURL}${mi.image}`;
+            try {
+                bot.sendMessage(senderId, message);
+                bot.sendPhoto(senderId, imageURL);
+            } catch (error) {
+                console.log(`Error at User Provides Restaurants Second Message Telegram. ${error}`)
+            }
+        }
+
+    } else if (intentData.intent === 'User Chooses Pay Now'
+        || intentData.intent === 'User Chooses Collect'
+        || intentData.intent === 'User Chooses Pay On Delivery') {
+
+        let outputContexts = intentData.outputContexts;
+        let cartItems;
+
+        outputContexts.forEach(outputContext => {
+            let session = outputContext.name;
+            if (session.includes('/contexts/session-vars')) {
+                cartItems = outputContext.parameters.fields.cartItems;
+            }
+        });
+
+        let items = {};
+
+        cartItems.listValue.values.forEach(ci => {
+            let val = ci.structValue.fields;
+            items[val.mid.numberValue] = val.quantity.numberValue
+        });
+
+        let client = {};
+
+        try {
+            client = await APICALLS.createNewClient({
+                uuid: senderId,
+                platform: 'Telegram'
+            });
+        } catch (error) {
+            console.log(`Error at Payment at createNewClient Telegram. ${error}`);
+        }
+
+        let typeOfOrder, paymentMode;
+
+        if (intentData.intent === 'User Chooses Collect') {
+            typeOfOrder = 'Collect';
+        } else {
+            typeOfOrder = 'Delivery';
+        }
+
+        if (intentData.intent === 'User Chooses Pay Now'
+            && intentData.intent !== 'User Chooses Collect') {
+            paymentMode = 'Pay Now';
+        } else {
+            paymentMode = 'Pay On Delivery';
+        }
+
+        let order = {
+            items: JSON.stringify(items),
+            client_id: client.id,
+            type_of_order: typeOfOrder,
+            payment_mode: paymentMode,
+        };
+
+        let reply = intentData.fulfillmentMessages.text.text[0];
+        try {
+            await APICALLS.createNewOrder(order);
+            bot.sendMessage(senderId, reply);
+            await DF.deleteContext(senderId, 'session-vars');
+        } catch (error) {
+            console.log(`Error at Payment createNewOrder, sendMessage, deleteContext Telegram. ${error}`);
+        }
+
+    } else if (intentData.intent === 'User Provides Email') {
+
+        let outputContexts = intentData.outputContexts;
+        let email;
+
+        outputContexts.forEach(outputContext => {
+            let session = outputContext.name;
+            if (session.includes('/contexts/session-vars')) {
+                email = outputContext.parameters.fields.email.stringValue;
+            }
+        });
+
+        let client = {};
+
+        try {
+            client = await APICALLS.createNewClient({
+                uuid: senderId,
+                platform: 'Telegram'
+            });
+        } catch (error) {
+            console.log(`Error at createNewClient User Provides Email Telegram. ${error}`);
+        }
+
+        let updateEmail = {
+            id: client.id,
+            email: email
+        }
+
+        let reply = intentData.fulfillmentMessages.text.text[0];
+        try {
+            await APICALLS.updateClientEmail(updateEmail);
+            bot.sendMessage(senderId, reply);
+        } catch (error) {
+            console.log(`Error at updateClient Telegram. ${error}`);
+        }
+
+    } else if (intentData.intent === 'User Provides Ratings') {
+
+        let outputContexts = intentData.outputContexts;
+
+        let ratings, orderId;
+
+        outputContexts.forEach(outputContext => {
+            let session = outputContext.name;
+            if (session.includes('/contexts/ratings-vars')) {
+                ratings = outputContext.parameters.fields.ratings.numberValue;
+                orderId = outputContext.parameters.fields.order_id.stringValue;
+            }
+        });
+
+        // Update ratings
+        let values = {
+            id: orderId,
+            rating: ratings
+        }
+
+        let reply = intentData.fulfillmentMessages.text.text[0];
+        try {
+            await APICALLS.updateOrderRatings(values);
+            bot.sendMessage(senderId, reply);
+        } catch (error) {
+            console.log(`Error at updateOrderRatings Telegram. ${error}`);
+        }
+
+    } else if (intentData.intent === 'User Provides Address') {
+
+        let outputContexts = intentData.outputContexts;
+        let address;
+
+        outputContexts.forEach(outputContext => {
+            let session = outputContext.name;
+            if (session.includes('/contexts/session-vars')) {
+                address = outputContext.parameters.fields.address.stringValue;
+            }
+        });
+
+        let reply = intentData.fulfillmentMessages.text.text[0];
+        try {
+            await APICALLS.createNewClient({
+                uuid: senderId,
+                platform: 'Telegram',
+                address: address
+            });
+            bot.sendMessage(senderId, reply);
+        } catch (error) {
+            console.log(`Error at User PRovides Address Telegram. ${error}`)
+        }
+    }
+    else {
+        let reply = intentData.fulfillmentMessages.text.text[0];
+        try {
+            bot.sendMessage(senderId, reply);
+        } catch (error) {
+            console.log(`Error at no intent match Telegram. ${error}`);
+        }
+    }
+});
+
 // Order confirm
 webApp.post('/confirm', async (req, res) => {
 
@@ -810,8 +1041,10 @@ webApp.post('/confirm', async (req, res) => {
     try {
         if (client.platform === 'Facebook') {
             await FM.sendMessage(message, client.uuid);
-        } else {
+        } else if (client.platform === 'WhatsApp') {
             await WA.sendMessage(message, client.uuid);
+        } else {
+            bot.sendMessage(client.uuid, message);
         }
     } catch (error) {
         console.log(`Error at confirm order. ${error}`);
@@ -834,8 +1067,10 @@ webApp.post('/cancel', async (req, res) => {
     try {
         if (client.platform === 'Facebook') {
             await FM.sendMessage(message, client.uuid);
-        } else {
+        } else if (client.platform === 'WhatsApp') {
             await WA.sendMessage(message, client.uuid);
+        } else {
+            bot.sendMessage(client.uuid, message);
         }
     } catch (error) {
         console.log(`Error at cancel order. ${error}`);
@@ -884,8 +1119,10 @@ webApp.post('/delivered', async (req, res) => {
     try {
         if (client.platform === 'Facebook') {
             await FM.sendMessage(reply, client.uuid);
-        } else {
+        } else if (client.platform === 'WhatsApp'){
             await WA.sendMessage(reply, client.uuid);
+        } else {
+            bot.sendMessage(client.uuid, reply);
         }
     } catch (error) {
         console.log(`Error at delivered sendMessage. ${error}`);
