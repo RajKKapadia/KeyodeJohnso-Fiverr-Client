@@ -546,7 +546,7 @@ webApp.post('/whatsapp', async (req, res) => {
         outputContexts.forEach(outputContext => {
             let session = outputContext.name;
             if (session.includes('/contexts/session-vars')) {
-                name = outputContext.parameters.fields.person.structValuefields.name.stringValue;
+                name = outputContext.parameters.fields.person.structValue.fields.name.stringValue;
             }
         });
 
@@ -568,7 +568,7 @@ webApp.post('/whatsapp', async (req, res) => {
 
         try {
             await APICALLS.updateClientName(updateName);
-            await WA.sendMessage(senderId, 'Please choose an option from: Deliver/Collect')
+            await WA.sendMessage('Please choose an option from: Deliver/Collect', senderId);
         } catch (error) {
             console.log(`Error at User Provides Name WA. ${error}`);
         }
@@ -663,7 +663,9 @@ webApp.post('/facebook', async (req, res) => {
                     let imageURL = `${IMAGEURL}${mi.image}`;
                     try {
                         await FM.sendMessage(message, senderId);
-                        await FM.sendMediaMessage(imageURL, senderId);
+                        setTimeout(async () => {
+                            await FM.sendMediaMessage(imageURL, senderId);
+                        }, 500);
                     } catch (error) {
                         console.log(`Error at User Provides Restaurants Second Message FB. ${error}`)
                     }
@@ -934,7 +936,9 @@ bot.on('message', async (msg) => {
             let imageURL = `${IMAGEURL}${mi.image}`;
             try {
                 bot.sendMessage(senderId, message);
-                bot.sendPhoto(senderId, imageURL);
+                setTimeout(() => {
+                    bot.sendPhoto(senderId, imageURL);
+                }, 500);
             } catch (error) {
                 console.log(`Error at User Provides Restaurants Second Message Telegram. ${error}`)
             }
@@ -1146,7 +1150,10 @@ webApp.post('/confirm', async (req, res) => {
 
     let data = req.body;
     let orderId = data.order_id;
-    let client = JSON.parse(data.user_id);
+    let client = data.user_id;
+
+    console.log('Order confirmed.');
+    console.log(data);
 
     let message = `Heyya, Your order ${orderId} is confirmed by the restaurant. It will be delivered in 45 mins.`
 
@@ -1170,8 +1177,9 @@ webApp.post('/cancel', async (req, res) => {
 
     let data = req.body;
     let orderId = data.order_id;
-    let client = JSON.parse(data.user_id);
+    let client = data.user_id;
 
+    console.log('Order cancelled.');
     console.log(data);
 
     let message = `Your order is cancelled by the restaurant. Sorry for the inconvenience caused.`
@@ -1196,7 +1204,10 @@ webApp.post('/delivered', async (req, res) => {
 
     let data = req.body;
     let orderId = data.order_id;
-    let client = JSON.parse(data.user_id);
+    let client = data.user_id;
+
+    console.log('Order delivered.');
+    console.log(data);
 
     let parameters = {
         fields: {
